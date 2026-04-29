@@ -6,6 +6,7 @@ import draftsRouter from './routes/drafts.js';
 import topicsRouter from './routes/topics.js';
 import scheduleRouter from './routes/schedule.js';
 import settingsRouter from './routes/settings.js';
+import educationRouter from './routes/education.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -19,6 +20,7 @@ app.use('/api/drafts', draftsRouter);
 app.use('/api/topics', topicsRouter);
 app.use('/api/schedule', scheduleRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/education', educationRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

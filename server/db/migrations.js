@@ -57,4 +57,40 @@ export function runMigrations(db) {
     ['timezone', 'Europe/Amsterdam'],
   ];
   for (const [k, v] of defaults) seed.run(k, v);
+
+  // Seed education topics if table is empty
+  const topicCount = db.prepare('SELECT COUNT(*) as n FROM topics').get().n;
+  if (topicCount === 0) {
+    const insertTopic = db.prepare('INSERT INTO topics (title, category) VALUES (?, ?)');
+    const educationTopics = [
+      'What incrementality actually measures (and why your last-click data is lying)',
+      'Lookback windows — how the wrong setting inflates your conversions',
+      'Why CPM optimization hurts performance campaigns',
+      'The difference between PMPs and open market in CTV',
+      'LAL audiences and why they mostly reach existing customers',
+      'FAST channel inventory — what buyers need to know',
+      'SPO — what it is and when it actually matters',
+      'Why completion rate is a bad CTV metric',
+      'How frequency capping works across DSPs (and where it breaks)',
+      'Brand safety vs brand suitability — the real difference',
+      'Audience-first vs channel-first planning',
+      'What iCPA and iROAS actually measure',
+      'MFA inventory — how to identify and exclude it',
+      'The attention metric hype — what\'s real',
+      'How bid shading works in first-price auctions',
+      'Deal IDs — when to use them vs open market',
+      'Why your CTV reach numbers are probably wrong',
+      'Attribution window mismatch — the hidden campaign killer',
+      'Cross-device tracking in 2025 — what actually works',
+      'How Amazon DSP targeting differs from TTD and DV360',
+      'Creative fatigue in programmatic — when to refresh',
+      'Why your allowlist might be hurting scale without improving quality',
+      'The role of creative in programmatic performance',
+      'Measurement frameworks for brand campaigns',
+      'When to use DSP audiences vs first-party data',
+    ];
+    for (const title of educationTopics) {
+      insertTopic.run(title, 'education');
+    }
+  }
 }
