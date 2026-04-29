@@ -40,6 +40,13 @@ export function runMigrations(db) {
     );
   `);
 
+  // Add rejected column if not present (safe on fresh or existing DBs)
+  try {
+    db.exec(`ALTER TABLE drafts ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   // Seed default settings keys if absent
   const seed = db.prepare(
     `INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`

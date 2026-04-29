@@ -7,6 +7,7 @@ import Personal from './pages/Personal.jsx';
 import Memes from './pages/Memes.jsx';
 import Schedule from './pages/Schedule.jsx';
 import Settings from './pages/Settings.jsx';
+import ReviewQueue from './pages/ReviewQueue.jsx';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/memes" element={<Memes />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/review" element={<ReviewQueue />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
