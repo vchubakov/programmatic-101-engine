@@ -43,6 +43,89 @@ function AutoTextarea({ value, onChange, placeholder, className, minRows = 4 }) 
   );
 }
 
+// ── AgentInfoPanel ────────────────────────────────────────────────────────────
+
+function AgentInfoPanel({ draftId, agentScope }) {
+  const [open, setOpen] = useState(false);
+  const [logs, setLogs] = useState(null);
+
+  useEffect(() => {
+    if (!open || logs !== null) return;
+    fetch(`/api/agents/logs/${draftId}`)
+      .then(r => r.json())
+      .then(setLogs)
+      .catch(() => setLogs([]));
+  }, [open, draftId, logs]);
+
+  if (!agentScope) return null;
+
+  const log = logs?.[0];
+  const steps = log ? parseJSON(log.steps) : [];
+
+  return (
+    <div className="border-t border-gray-800 mt-2">
+      <button
+        onClick={() => setOpen(p => !p)}
+        className="w-full flex items-center justify-between px-3.5 py-2 text-[11px] text-gray-600
+                   hover:text-gray-400 transition-colors"
+      >
+        <span className="uppercase tracking-wider font-semibold">Agent Info</span>
+        <span>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="px-3.5 pb-3 space-y-2">
+          {logs === null ? (
+            <p className="text-xs text-gray-700">Loading…</p>
+          ) : !log ? (
+            <p className="text-xs text-gray-700 italic">No agent log for this draft</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <span className="text-gray-600">Scope</span>
+                <span className="text-gray-400 font-mono">{log.scope}</span>
+
+                <span className="text-gray-600">Prompt version</span>
+                <span className="text-gray-400 font-mono">v{log.prompt_version}</span>
+
+                <span className="text-gray-600">Based on</span>
+                <span className="text-gray-400">{log.performance_posts_used} posts of data</span>
+
+                <span className="text-gray-600">Learning applied</span>
+                {log.learning_applied ? (
+                  <span className="text-emerald-400 font-semibold">YES</span>
+                ) : (
+                  <span className="text-gray-600">NOT YET</span>
+                )}
+              </div>
+
+              {Array.isArray(steps) && steps.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-1.5">Steps</p>
+                  <div className="space-y-1">
+                    {steps.map((s, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[11px]">
+                        <span className="text-gray-700 mt-0.5 flex-shrink-0">→</span>
+                        <span className="text-gray-500 font-mono">{s.step}</span>
+                        {s.performance_posts !== undefined && (
+                          <span className="text-gray-700 ml-auto">{s.performance_posts} posts</span>
+                        )}
+                        {s.tokens_used !== undefined && (
+                          <span className="text-gray-700 ml-auto">{s.tokens_used} tok</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── badge styles ──────────────────────────────────────────────────────────────
 
 const MODULE_BADGE = {
@@ -67,10 +150,8 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
   const showLinkedin = draft.platform === 'linkedin' || draft.platform === 'both';
   const showX        = draft.platform === 'x'        || draft.platform === 'both';
 
-  // LinkedIn editable text
   const [liText, setLiText] = useState(content.linkedin ?? '');
 
-  // X options: normalize to array of strings
   const rawX = content.x ?? content.tweets ?? content.options ?? [];
   const xOptions = Array.isArray(rawX)
     ? rawX.map(String)
@@ -79,14 +160,12 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
   const [selectedX, setSelectedX]   = useState(0);
   const [xEdits,    setXEdits]      = useState(xOptions.slice());
 
-  // Schedule picker state
   const [showPicker, setShowPicker] = useState(false);
   const [schedDate,  setSchedDate]  = useState('');
   const [schedTime,  setSchedTime]  = useState('09:00');
   const [busy,       setBusy]       = useState(false);
   const pickerRef = useRef();
 
-  // Pre-fill schedule from config
   useEffect(() => {
     const cfg = scheduleConfigs?.find(
       (c) => c.module === draft.module &&
@@ -99,7 +178,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
     if (cfg?.time_cet) setSchedTime(cfg.time_cet);
   }, [scheduleConfigs, draft.module, draft.platform]);
 
-  // Close picker on outside click
   useEffect(() => {
     if (!showPicker) return;
     function handler(e) {
@@ -109,8 +187,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showPicker]);
-
-  // ── actions ──────────────────────────────────────────────────────────────
 
   async function handleApprove() {
     setBusy(true);
@@ -144,8 +220,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
     setXEdits((prev) => { const n = [...prev]; n[i] = val; return n; });
   }
 
-  // ── derived display values ────────────────────────────────────────────────
-
   const sourceLabel = source.headline ?? source.topic ?? source.title ?? source.url ?? '—';
   const moduleBadge   = MODULE_BADGE[draft.module]     ?? 'bg-gray-800 text-gray-400 border-gray-600';
   const platformBadge = PLATFORM_BADGE[draft.platform] ?? 'bg-gray-800 text-gray-400 border-gray-600';
@@ -177,7 +251,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
       {/* ── content area ── */}
       <div className="p-3.5 space-y-4">
 
-        {/* LinkedIn section */}
         {showLinkedin && (
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -200,7 +273,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
           </div>
         )}
 
-        {/* X / Twitter section */}
         {showX && (
           <div>
             <div className="flex items-center justify-between mb-1.5">
@@ -271,7 +343,6 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
         {/* ── action buttons ── */}
         <div className="flex items-center gap-2 pt-1 relative">
 
-          {/* Approve & Schedule with popover */}
           <div ref={pickerRef} className="relative">
             <button
               onClick={() => setShowPicker((p) => !p)}
@@ -336,6 +407,9 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
           </button>
         </div>
       </div>
+
+      {/* ── agent info footer ── */}
+      <AgentInfoPanel draftId={draft.id} agentScope={draft.agent_scope} />
     </div>
   );
 }

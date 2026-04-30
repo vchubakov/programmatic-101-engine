@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { getDb } from '../db/index.js';
-import { PERSONAL_LINKEDIN_PROMPT } from '../prompts/personal.js';
+import { LinkedinPersonalAgent } from '../agents/writers/linkedinPersonalAgent.js';
 
 const router = Router();
+const agent = new LinkedinPersonalAgent();
 
 router.post('/generate', async (req, res) => {
   const { a1, a2, a3, a4, a5 } = req.body;
@@ -20,14 +21,9 @@ router.post('/generate', async (req, res) => {
 
   const client = new Anthropic({ apiKey });
 
-  let postText;
+  let postText, steps, context;
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: PERSONAL_LINKEDIN_PROMPT({ a1, a2, a3, a4, a5 }) }],
-    });
-    postText = message.content[0]?.text ?? '';
+    ({ text: postText, steps, context } = await agent.generate({ a1, a2, a3, a4, a5 }, db, client));
   } catch (err) {
     console.error('Claude API error:', err);
     return res.status(502).json({ error: 'Claude API request failed', detail: err.message });
@@ -36,11 +32,15 @@ router.post('/generate', async (req, res) => {
   const source = JSON.stringify({ a1, a2, a3, a4, a5 });
   const content = JSON.stringify({ linkedin: postText });
 
-  const insert = db.prepare(
-    'INSERT INTO drafts (module, platform, source_data, generated_content) VALUES (?, ?, ?, ?)'
-  );
-  const result = insert.run('personal', 'linkedin', source, content);
+  const result = db.prepare(
+    `INSERT INTO drafts
+       (module, platform, source_data, generated_content, agent_scope, prompt_version, learning_applied)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run('personal', 'linkedin', source, content, agent.scope, context.promptVersion, context.learningApplied ? 1 : 0);
+
   const draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid);
+
+  agent.saveLog(db, draft.id, steps, context);
 
   res.status(201).json(draft);
 });

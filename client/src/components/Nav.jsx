@@ -7,6 +7,7 @@ const links = [
   { to: '/education', label: 'Education' },
   { to: '/personal',  label: 'Personal' },
   { to: '/memes',     label: 'Memes' },
+  { to: '/learning',  label: 'Learning' },
   { to: '/schedule',  label: 'Schedule' },
   { to: '/settings',  label: 'Settings' },
 ];
