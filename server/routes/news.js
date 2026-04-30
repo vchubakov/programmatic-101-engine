@@ -2,9 +2,12 @@ import { Router } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { getDb } from '../db/index.js';
 import { MOCK_ARTICLES } from '../mock/news.js';
-import { NEWS_LINKEDIN_PROMPT, NEWS_X_PROMPT } from '../prompts/news.js';
+import { LinkedinNewsAgent } from '../agents/writers/linkedinNewsAgent.js';
+import { XNewsAgent } from '../agents/writers/xNewsAgent.js';
 
 const router = Router();
+const linkedinAgent = new LinkedinNewsAgent();
+const xAgent = new XNewsAgent();
 
 // GET /api/news/fetch — returns mock articles
 router.get('/fetch', (_req, res) => {
@@ -25,46 +28,41 @@ router.post('/generate', async (req, res) => {
 
   const client = new Anthropic({ apiKey });
 
-  let linkedinText;
+  let linkedinText, liSteps, liContext;
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: NEWS_LINKEDIN_PROMPT(article) }],
-    });
-    linkedinText = msg.content[0]?.text ?? '';
+    ({ text: linkedinText, steps: liSteps, context: liContext } =
+      await linkedinAgent.generate(article, db, client));
   } catch (err) {
     console.error('Claude LinkedIn error:', err);
     return res.status(502).json({ error: 'Claude API request failed', detail: err.message });
   }
 
   let xOptions = [];
+  let xSteps, xContext;
   try {
-    const msg = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: NEWS_X_PROMPT(article) }],
-    });
-    const raw = msg.content[0]?.text ?? '{}';
-    const parsed = JSON.parse(raw);
+    const { text: xRaw, steps: xs, context: xc } = await xAgent.generate(article, db, client);
+    xSteps = xs;
+    xContext = xc;
+    const parsed = JSON.parse(xRaw);
     xOptions = Array.isArray(parsed.options) ? parsed.options : [];
   } catch (err) {
     console.error('Claude X error:', err);
     // non-fatal — save with empty x options
   }
 
-  const source = JSON.stringify({
-    headline: article.headline,
-    url: article.url,
-    date: article.date,
-  });
+  const source = JSON.stringify({ headline: article.headline, url: article.url, date: article.date });
   const content = JSON.stringify({ linkedin: linkedinText, x: xOptions });
 
-  const insert = db.prepare(
-    'INSERT INTO drafts (module, platform, source_data, generated_content) VALUES (?, ?, ?, ?)'
-  );
-  const result = insert.run('news', 'both', source, content);
+  const result = db.prepare(
+    `INSERT INTO drafts
+       (module, platform, source_data, generated_content, agent_scope, prompt_version, learning_applied)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run('news', 'both', source, content, linkedinAgent.scope, liContext.promptVersion, liContext.learningApplied ? 1 : 0);
+
   const draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid);
+
+  linkedinAgent.saveLog(db, draft.id, liSteps, liContext);
+  if (xSteps && xContext) xAgent.saveLog(db, draft.id, xSteps, xContext);
 
   res.status(201).json(draft);
 });
@@ -81,43 +79,45 @@ router.post('/generate-all', async (req, res) => {
 
   for (const article of MOCK_ARTICLES) {
     let linkedinText = '';
+    let liSteps, liContext;
     let xOptions = [];
+    let xSteps, xContext;
 
     try {
-      const msg = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: NEWS_LINKEDIN_PROMPT(article) }],
-      });
-      linkedinText = msg.content[0]?.text ?? '';
+      ({ text: linkedinText, steps: liSteps, context: liContext } =
+        await linkedinAgent.generate(article, db, client));
     } catch (err) {
       console.error(`Claude LinkedIn error for "${article.headline}":`, err);
     }
 
     try {
-      const msg = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 512,
-        messages: [{ role: 'user', content: NEWS_X_PROMPT(article) }],
-      });
-      const raw = msg.content[0]?.text ?? '{}';
-      const parsed = JSON.parse(raw);
+      const { text: xRaw, steps: xs, context: xc } = await xAgent.generate(article, db, client);
+      xSteps = xs;
+      xContext = xc;
+      const parsed = JSON.parse(xRaw);
       xOptions = Array.isArray(parsed.options) ? parsed.options : [];
     } catch (err) {
       console.error(`Claude X error for "${article.headline}":`, err);
     }
 
-    const source = JSON.stringify({
-      headline: article.headline,
-      url: article.url,
-      date: article.date,
-    });
+    const source = JSON.stringify({ headline: article.headline, url: article.url, date: article.date });
     const content = JSON.stringify({ linkedin: linkedinText, x: xOptions });
 
-    const result = db
-      .prepare('INSERT INTO drafts (module, platform, source_data, generated_content) VALUES (?, ?, ?, ?)')
-      .run('news', 'both', source, content);
+    const result = db.prepare(
+      `INSERT INTO drafts
+         (module, platform, source_data, generated_content, agent_scope, prompt_version, learning_applied)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      'news', 'both', source, content,
+      linkedinAgent.scope,
+      liContext?.promptVersion ?? 0,
+      liContext?.learningApplied ? 1 : 0
+    );
     const draft = db.prepare('SELECT * FROM drafts WHERE id = ?').get(result.lastInsertRowid);
+
+    if (liSteps && liContext) linkedinAgent.saveLog(db, draft.id, liSteps, liContext);
+    if (xSteps && xContext) xAgent.saveLog(db, draft.id, xSteps, xContext);
+
     drafts.push(draft);
   }
 

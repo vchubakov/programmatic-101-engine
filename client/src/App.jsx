@@ -8,6 +8,7 @@ import Memes from './pages/Memes.jsx';
 import Schedule from './pages/Schedule.jsx';
 import Settings from './pages/Settings.jsx';
 import ReviewQueue from './pages/ReviewQueue.jsx';
+import Learning from './pages/Learning.jsx';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="/education" element={<Education />} />
           <Route path="/personal" element={<Personal />} />
           <Route path="/memes" element={<Memes />} />
+          <Route path="/learning" element={<Learning />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/review" element={<ReviewQueue />} />

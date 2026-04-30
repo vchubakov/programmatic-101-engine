@@ -43,8 +43,70 @@ export function runMigrations(db) {
   // Add rejected column if not present (safe on fresh or existing DBs)
   try {
     db.exec(`ALTER TABLE drafts ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0`);
-  } catch {
-    // Column already exists — ignore
+  } catch { /* already exists */ }
+
+  // Agent columns on drafts
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN agent_scope TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN prompt_version INTEGER DEFAULT 0`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN learning_applied INTEGER DEFAULT 0`); } catch { /* exists */ }
+
+  // Performance tracking
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_performance (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      draft_id         INTEGER REFERENCES drafts(id),
+      platform         TEXT,
+      post_url         TEXT,
+      posted_at        TEXT,
+      likes            INTEGER DEFAULT 0,
+      comments         INTEGER DEFAULT 0,
+      shares           INTEGER DEFAULT 0,
+      impressions      INTEGER DEFAULT 0,
+      clicks           INTEGER DEFAULT 0,
+      engagement_rate  REAL DEFAULT 0,
+      fetched_at       TEXT,
+      raw_api_response TEXT,
+      created_at       TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS learnings (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope          TEXT UNIQUE NOT NULL,
+      running_notes  TEXT DEFAULT '',
+      prompt_patch   TEXT DEFAULT '',
+      patch_approved INTEGER DEFAULT 0,
+      version        INTEGER DEFAULT 0,
+      updated_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      created_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS prompt_versions (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope                 TEXT NOT NULL,
+      version               INTEGER NOT NULL,
+      prompt_text           TEXT NOT NULL,
+      avg_engagement_before REAL,
+      avg_engagement_after  REAL,
+      active                INTEGER DEFAULT 0,
+      created_at            TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_logs (
+      id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+      draft_id               INTEGER REFERENCES drafts(id),
+      scope                  TEXT,
+      steps                  TEXT DEFAULT '[]',
+      prompt_version         INTEGER DEFAULT 0,
+      performance_posts_used INTEGER DEFAULT 0,
+      learning_applied       INTEGER DEFAULT 0,
+      created_at             TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+  `);
+
+  // Seed default learnings scopes if absent
+  const seedLearning = db.prepare(`INSERT OR IGNORE INTO learnings (scope) VALUES (?)`);
+  for (const scope of ['global', 'linkedin_news', 'linkedin_education', 'linkedin_personal', 'x_news', 'x_general']) {
+    seedLearning.run(scope);
   }
 
   // Seed default settings keys if absent
