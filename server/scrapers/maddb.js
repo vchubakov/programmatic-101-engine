@@ -1,105 +1,85 @@
-import puppeteer from 'puppeteer-core';
-import { execSync } from 'child_process';
+import https from 'https';
+import http from 'http';
 
-function findChromium() {
-  const paths = [
-    process.env.PUPPETEER_EXECUTABLE_PATH,
-    '/usr/bin/chromium',
-    '/usr/bin/chromium-browser',
-    '/usr/bin/google-chrome',
-    '/usr/bin/google-chrome-stable',
-    '/snap/bin/chromium',
-    '/nix/var/nix/profiles/default/bin/chromium',
-  ].filter(Boolean);
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchUrl(res.headers.location).then(resolve).catch(reject);
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+  });
+}
 
-  for (const p of paths) {
+function extractArticles(html) {
+  const articles = [];
+  
+  // Extract JSON-LD structured data first (most reliable)
+  const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs);
+  for (const match of jsonLdMatches) {
     try {
-      execSync('test -f ' + p, { stdio: 'ignore' });
-      return p;
+      const data = JSON.parse(match[1]);
+      const items = Array.isArray(data) ? data : [data];
+      for (const item of items) {
+        if (item['@type'] === 'NewsArticle' || item['@type'] === 'Article') {
+          articles.push({
+            headline: item.headline || item.name,
+            summary: item.description,
+            url: item.url || item.mainEntityOfPage?.['@id'],
+            date: item.datePublished
+          });
+        }
+      }
     } catch {}
   }
+  
+  if (articles.length > 3) return articles.slice(0, 20);
 
-  try {
-    const found = execSync(
-      'which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null',
-      { encoding: 'utf8' }
-    ).trim().split('\n')[0];
-    if (found) return found;
-  } catch {}
+  // Fallback: extract from meta tags and og tags
+  const ogTitles = [...html.matchAll(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/g)].map(m => m[1]);
+  const ogDescs = [...html.matchAll(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/g)].map(m => m[1]);
+  const ogUrls = [...html.matchAll(/<meta[^>]+property="og:url"[^>]+content="([^"]+)"/g)].map(m => m[1]);
 
-  return null;
+  // Extract article links with titles from anchor tags
+  const linkMatches = [...html.matchAll(/<a[^>]+href="([^"]*)"[^>]*>\s*<[^>]*>\s*([^<]{20,200})\s*</g)];
+  
+  // Extract h2/h3 tags as potential headlines
+  const headlineMatches = [...html.matchAll(/<h[23][^>]*>([^<]{20,200})<\/h[23]>/g)];
+  
+  for (const match of headlineMatches.slice(0, 20)) {
+    const headline = match[1].trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+    if (headline.length > 20 && headline.length < 300) {
+      articles.push({
+        headline,
+        summary: '',
+        url: 'https://maddb.ai/trending',
+        date: new Date().toISOString().split('T')[0]
+      });
+    }
+  }
+
+  return articles.filter(a => a.headline).slice(0, 20);
 }
 
 export async function scrapeMaddb() {
-  const execPath = findChromium();
-  console.log('Chromium found at:', execPath);
-
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    executablePath: execPath || undefined,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--single-process'
-    ]
-  });
-
-  try {
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/120.0.0.0 Safari/537.36'
-    );
-
-    await page.goto('https://maddb.ai/trending', {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-
-    await page.waitForSelector(
-      'article, .article, .post, [class*="story"], [class*="news"]',
-      { timeout: 10000 }
-    ).catch(() => {});
-
-    const articles = await page.evaluate(() => {
-      const selectors = [
-        'article',
-        '.article-card',
-        '.story-card',
-        '[class*="article"]',
-        '[class*="story"]',
-        '[class*="trending"]'
-      ];
-
-      let elements = [];
-      for (const sel of selectors) {
-        elements = document.querySelectorAll(sel);
-        if (elements.length > 3) break;
-      }
-
-      return Array.from(elements).slice(0, 20).map(el => {
-        const headline = el.querySelector(
-          'h1, h2, h3, h4, [class*="title"], [class*="headline"]'
-        )?.innerText?.trim();
-
-        const summary = el.querySelector(
-          'p, [class*="summary"], [class*="description"], [class*="excerpt"]'
-        )?.innerText?.trim();
-
-        const link = el.querySelector('a')?.href;
-
-        const dateEl = el.querySelector('time, [class*="date"], [datetime]');
-        const date = dateEl?.getAttribute('datetime') || dateEl?.innerText?.trim();
-
-        return { headline, summary, url: link, date };
-      }).filter(a => a.headline && a.url);
-    });
-
-    return articles;
-  } finally {
-    await browser.close();
+  const html = await fetchUrl('https://maddb.ai/trending');
+  const articles = extractArticles(html);
+  
+  if (articles.length === 0) {
+    throw new Error('No articles extracted from maddb.ai - site structure may have changed');
   }
+  
+  return articles;
 }
