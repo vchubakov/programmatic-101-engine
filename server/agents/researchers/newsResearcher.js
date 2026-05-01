@@ -76,14 +76,31 @@ Return ONLY valid JSON:
     const raw = msg.content[0]?.text ?? '{}';
     let analysis;
     try {
-      const clean = raw
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
+      // Remove any markdown code fences
+      let clean = raw;
+      const fenceStart = clean.indexOf('```');
+      if (fenceStart !== -1) {
+        clean = clean.substring(fenceStart);
+        clean = clean.replace(/^```[a-z]*
+?/, '');
+        const fenceEnd = clean.lastIndexOf('```');
+        if (fenceEnd !== -1) clean = clean.substring(0, fenceEnd);
+      }
+      clean = clean.trim();
       analysis = JSON.parse(clean);
     } catch (err) {
-      throw new Error('Researcher failed to parse JSON: ' + raw.slice(0, 300));
+      // Last resort: find first { and last }
+      try {
+        const start = raw.indexOf('{');
+        const end = raw.lastIndexOf('}');
+        if (start !== -1 && end !== -1) {
+          analysis = JSON.parse(raw.substring(start, end + 1));
+        } else {
+          throw new Error('No JSON object found');
+        }
+      } catch (err2) {
+        throw new Error('Parse failed: ' + raw.slice(0, 200));
+      }
     }
 
     steps.push({
