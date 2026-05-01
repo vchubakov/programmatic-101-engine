@@ -1,85 +1,51 @@
 import https from 'https';
-import http from 'http';
 
-function fetchUrl(url) {
+const MADDB_API_URL = 'https://app.maddb.ai/rest/v1/news_cache?select=data&cache_key=eq.latest';
+const MADDB_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubnVkeWl3YWNycGtiZXpyenphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA2MDUzODAsImV4cCI6MjA1NjE4MTM4MH0.r4hH5Da7W2i_pGfqXhfkX4KJqbSzM9Hym5Zan26pqis';
+
+function fetchJson(url, headers) {
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-      }
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        return fetchUrl(res.headers.location).then(resolve).catch(reject);
-      }
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => resolve(data));
+    const req = https.get(url, { headers }, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString()));
+        } catch (e) {
+          reject(new Error('Failed to parse JSON: ' + e.message));
+        }
+      });
     });
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
   });
 }
 
-function extractArticles(html) {
-  const articles = [];
-  
-  // Extract JSON-LD structured data first (most reliable)
-  const jsonLdMatches = html.matchAll(/<script type="application\/ld\+json"[^>]*>(.*?)<\/script>/gs);
-  for (const match of jsonLdMatches) {
-    try {
-      const data = JSON.parse(match[1]);
-      const items = Array.isArray(data) ? data : [data];
-      for (const item of items) {
-        if (item['@type'] === 'NewsArticle' || item['@type'] === 'Article') {
-          articles.push({
-            headline: item.headline || item.name,
-            summary: item.description,
-            url: item.url || item.mainEntityOfPage?.['@id'],
-            date: item.datePublished
-          });
-        }
-      }
-    } catch {}
-  }
-  
-  if (articles.length > 3) return articles.slice(0, 20);
-
-  // Fallback: extract from meta tags and og tags
-  const ogTitles = [...html.matchAll(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/g)].map(m => m[1]);
-  const ogDescs = [...html.matchAll(/<meta[^>]+property="og:description"[^>]+content="([^"]+)"/g)].map(m => m[1]);
-  const ogUrls = [...html.matchAll(/<meta[^>]+property="og:url"[^>]+content="([^"]+)"/g)].map(m => m[1]);
-
-  // Extract article links with titles from anchor tags
-  const linkMatches = [...html.matchAll(/<a[^>]+href="([^"]*)"[^>]*>\s*<[^>]*>\s*([^<]{20,200})\s*</g)];
-  
-  // Extract h2/h3 tags as potential headlines
-  const headlineMatches = [...html.matchAll(/<h[23][^>]*>([^<]{20,200})<\/h[23]>/g)];
-  
-  for (const match of headlineMatches.slice(0, 20)) {
-    const headline = match[1].trim().replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
-    if (headline.length > 20 && headline.length < 300) {
-      articles.push({
-        headline,
-        summary: '',
-        url: 'https://maddb.ai/trending',
-        date: new Date().toISOString().split('T')[0]
-      });
-    }
-  }
-
-  return articles.filter(a => a.headline).slice(0, 20);
-}
-
 export async function scrapeMaddb() {
-  const html = await fetchUrl('https://maddb.ai/trending');
-  const articles = extractArticles(html);
-  
-  if (articles.length === 0) {
-    throw new Error('No articles extracted from maddb.ai - site structure may have changed');
+  const result = await fetchJson(MADDB_API_URL, {
+    'apikey': MADDB_API_KEY,
+    'Authorization': 'Bearer ' + MADDB_API_KEY,
+    'Accept': 'application/json',
+    'Accept-Profile': 'public',
+  });
+
+  if (!Array.isArray(result) || !result[0]?.data) {
+    throw new Error('Unexpected response structure from maddb.ai API');
   }
-  
-  return articles;
+
+  const articles = result[0].data;
+
+  return articles
+    .filter(a => a.title && a.url)
+    .slice(0, 20)
+    .map(a => ({
+      headline: a.title,
+      summary: a.snippet || '',
+      url: a.url,
+      date: a.published_at 
+        ? a.published_at.split('T')[0] 
+        : new Date().toISOString().split('T')[0],
+      source: a.favicon || '',
+      ai_score: a.ai_score || 0
+    }));
 }
