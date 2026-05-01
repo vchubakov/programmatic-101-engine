@@ -109,16 +109,29 @@ export function runMigrations(db) {
     seedLearning.run(scope);
   }
 
-  // Seed default settings keys if absent
-  const seed = db.prepare(
-    `INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`
-  );
+  // Seed default settings keys if absent (empty placeholders)
+  const seed = db.prepare(`INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)`);
   const defaults = [
-    ['anthropic_api_key', ''],
-    ['default_platform', 'linkedin'],
-    ['timezone', 'Europe/Amsterdam'],
+    ['anthropic_api_key',       ''],
+    ['linkedin_client_id',      ''],
+    ['linkedin_client_secret',  ''],
+    ['brave_api_key',           ''],
+    ['default_platform',        'linkedin'],
+    ['timezone',                'Europe/Amsterdam'],
   ];
   for (const [k, v] of defaults) seed.run(k, v);
+
+  // Overwrite with env var values when present (lets Railway env vars take precedence)
+  const upsert = db.prepare(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`);
+  const envKeys = [
+    ['anthropic_api_key',      process.env.ANTHROPIC_API_KEY      || ''],
+    ['linkedin_client_id',     process.env.LINKEDIN_CLIENT_ID     || ''],
+    ['linkedin_client_secret', process.env.LINKEDIN_CLIENT_SECRET || ''],
+    ['brave_api_key',          process.env.BRAVE_API_KEY          || ''],
+  ];
+  for (const [k, v] of envKeys) {
+    if (v) upsert.run(k, v);
+  }
 
   // Seed education topics if table is empty
   const topicCount = db.prepare('SELECT COUNT(*) as n FROM topics').get().n;
