@@ -45,6 +45,16 @@ export function runMigrations(db) {
     db.exec(`ALTER TABLE drafts ADD COLUMN rejected INTEGER NOT NULL DEFAULT 0`);
   } catch { /* already exists */ }
 
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS news_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        articles TEXT NOT NULL,
+        scraped_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      )
+    `);
+  } catch { /* already exists */ }
+
   // Agent columns on drafts
   try { db.exec(`ALTER TABLE drafts ADD COLUMN agent_scope TEXT`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE drafts ADD COLUMN prompt_version INTEGER DEFAULT 0`); } catch { /* exists */ }
