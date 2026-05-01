@@ -1,13 +1,48 @@
 import puppeteer from 'puppeteer-core';
+import { execSync } from 'child_process';
+
+function findChromium() {
+  const paths = [
+    process.env.PUPPETEER_EXECUTABLE_PATH,
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/snap/bin/chromium',
+    '/nix/var/nix/profiles/default/bin/chromium',
+  ].filter(Boolean);
+
+  for (const p of paths) {
+    try {
+      execSync('test -f ' + p, { stdio: 'ignore' });
+      return p;
+    } catch {}
+  }
+
+  try {
+    const found = execSync(
+      'which chromium 2>/dev/null || which chromium-browser 2>/dev/null || which google-chrome 2>/dev/null',
+      { encoding: 'utf8' }
+    ).trim().split('\n')[0];
+    if (found) return found;
+  } catch {}
+
+  return null;
+}
 
 export async function scrapeMaddb() {
+  const execPath = findChromium();
+  console.log('Chromium found at:', execPath);
+
   const browser = await puppeteer.launch({
     headless: 'new',
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/run/current-system/sw/bin/chromium',
+    executablePath: execPath || undefined,
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage'
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--single-process'
     ]
   });
 

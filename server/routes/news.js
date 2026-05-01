@@ -205,3 +205,17 @@ router.post('/generate-all', async (req, res) => {
 });
 
 export default router;
+
+// GET /api/news/debug-chrome
+import { execSync } from 'child_process';
+router.get('/debug-chrome', (_req, res) => {
+  try {
+    const result = execSync(
+      'find /nix /usr /snap -name "chromium" -o -name "chromium-browser" -o -name "google-chrome" 2>/dev/null | head -10',
+      { encoding: 'utf8', timeout: 10000 }
+    );
+    res.json({ found: result.trim().split('\n').filter(Boolean) });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
