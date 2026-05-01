@@ -46,6 +46,6 @@ export async function scrapeMaddb() {
         ? a.published_at.split('T')[0] 
         : new Date().toISOString().split('T')[0],
       source: a.favicon || '',
-      ai_score: a.ai_score || 0
+      ai_score: a.ai_score ?? 0
     }));
 }
