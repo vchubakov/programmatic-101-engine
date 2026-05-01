@@ -50,7 +50,8 @@ Prioritize:
 - Surprising data or contrarian angles
 - Measurement/AI news with practical implications
 
-Return ONLY valid JSON:
+CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start your response with { and end with }.
+
 {
   "selected": [
     {
