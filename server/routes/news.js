@@ -204,18 +204,18 @@ router.post('/generate-all', async (req, res) => {
   res.status(201).json(drafts);
 });
 
-export default router;
 
-// GET /api/news/debug-chrome
-import { execSync } from 'child_process';
-router.get('/debug-chrome', (_req, res) => {
+router.get('/debug-chrome', async (_req, res) => {
+  const { execSync } = await import('child_process');
   try {
     const result = execSync(
-      'find /nix /usr /snap -name "chromium" -o -name "chromium-browser" -o -name "google-chrome" 2>/dev/null | head -10',
-      { encoding: 'utf8', timeout: 10000 }
+      'find /nix /usr /snap /bin -name "chromium*" 2>/dev/null | head -20',
+      { encoding: 'utf8', timeout: 15000 }
     );
     res.json({ found: result.trim().split('\n').filter(Boolean) });
   } catch (err) {
-    res.json({ error: err.message });
+    res.json({ error: err.message, found: [] });
   }
 });
+
+export default router;
