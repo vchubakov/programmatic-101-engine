@@ -76,10 +76,14 @@ Return ONLY valid JSON:
     const raw = msg.content[0]?.text ?? '{}';
     let analysis;
     try {
-      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      analysis = JSON.parse(cleaned);
+      const clean = raw
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+      analysis = JSON.parse(clean);
     } catch (err) {
-      throw new Error('Researcher failed to return valid JSON: ' + raw.slice(0, 200));
+      throw new Error('Researcher failed to parse JSON: ' + raw.slice(0, 300));
     }
 
     steps.push({
