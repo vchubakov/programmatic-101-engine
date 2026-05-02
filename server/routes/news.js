@@ -11,6 +11,8 @@ const CACHE_HOURS = 6;
 
 // GET /api/news/fetch — scrape + filter via researcher
 router.get('/fetch', async (req, res) => {
+  console.log('[news/fetch] start', new Date().toISOString());
+  try {
   const db = getDb();
   const apiKey = db.prepare(
     'SELECT value FROM settings WHERE key = ?'
@@ -75,6 +77,18 @@ router.get('/fetch', async (req, res) => {
       detail: err.message,
       raw_articles: articles
     });
+  }
+
+  } catch (err) {
+    console.error('[news/fetch] OUTER ERROR:', err.stack || err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Outer handler failure',
+        message: err.message,
+        where: 'before or during db/scraper/researcher',
+        stack: (err.stack || '').split('\n').slice(0, 8)
+      });
+    }
   }
 });
 
@@ -215,6 +229,23 @@ router.get('/debug-chrome', async (_req, res) => {
     res.json({ found: result.trim().split('\n').filter(Boolean) });
   } catch (err) {
     res.json({ error: err.message, found: [] });
+  }
+});
+
+
+router.get('/debug-db', (_req, res) => {
+  try {
+    const db = getDb();
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const counts = {};
+    for (const t of tables) {
+      try {
+        counts[t.name] = db.prepare(`SELECT COUNT(*) as n FROM ${t.name}`).get().n;
+      } catch (e) { counts[t.name] = 'err: ' + e.message; }
+    }
+    res.json({ tables: tables.map(t => t.name), counts });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 

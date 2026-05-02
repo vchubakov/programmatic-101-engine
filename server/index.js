@@ -13,6 +13,14 @@ import newsRouter from './routes/news.js';
 import personalRouter from './routes/personal.js';
 import agentsRouter from './routes/agents.js';
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+});
+
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
