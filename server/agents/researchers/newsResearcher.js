@@ -1,4 +1,5 @@
 import { BaseAgent } from '../base.js';
+import { fetchMultipleArticles } from '../../scrapers/articleFetcher.js';
 
 export class NewsResearcher extends BaseAgent {
   constructor() { super('news_researcher'); }
@@ -25,6 +26,23 @@ export class NewsResearcher extends BaseAgent {
       recent_post_count: recentTopics.length
     });
 
+    const topArticles = articles
+      .sort((a, b) => (b.ai_score || 0) - (a.ai_score || 0))
+      .slice(0, 10);
+
+    const articleContents = await fetchMultipleArticles(topArticles.map(a => a.url));
+
+    const articlesWithContent = topArticles.map((article, i) => ({
+      ...article,
+      fullText: articleContents[i]?.text || ''
+    }));
+
+    steps.push({
+      step: 'articles_fetched',
+      fetched: articleContents.filter(a => a.success).length,
+      failed: articleContents.filter(a => !a.success).length
+    });
+
     const FILTER_PROMPT = `You are filtering news for Vlad Chubakov, a programmatic advertising strategist (@101Programmatic). His audience: media buyers, traders, adtech professionals.
 
 His content pillars: DSP deep-dives (TTD, DV360, Amazon DSP), optimization traps, measurement & attribution, supply quality, CTV, AI/agentic reality checks.
@@ -35,8 +53,14 @@ ${recentTopics.length > 0
   : 'None.'}
 
 TODAY'S CANDIDATE ARTICLES:
-${articles.map((a, i) =>
-  `[${i}] ${a.headline}\n    ${a.summary || 'No summary'}\n    ${a.url}`
+${articlesWithContent.map((a, i) =>
+  `[${i}] ${a.headline}
+  Summary: ${a.summary || 'No summary'}
+  Source: ${a.url}
+  Article text: ${a.fullText
+    ? a.fullText.slice(0, 800)
+    : 'Could not fetch'}
+  `
 ).join('\n\n')}
 
 YOUR JOB:
@@ -89,7 +113,7 @@ Return ONLY valid JSON:
     });
 
     const enriched = (analysis.selected || []).map(s => ({
-      ...articles[s.index],
+      ...articlesWithContent[s.index],
       reason: s.reason,
       suggested_angle: s.suggested_angle,
       is_duplicate_risk: s.is_duplicate_risk ?? false
