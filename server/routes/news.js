@@ -249,4 +249,18 @@ router.get('/debug-db', (_req, res) => {
   }
 });
 
+
+router.get('/debug-env', (_req, res) => {
+  const db = getDb();
+  const settings = db.prepare("SELECT key FROM settings").all();
+  res.json({
+    has_anthropic_env: !!process.env.ANTHROPIC_API_KEY,
+    anthropic_env_length: process.env.ANTHROPIC_API_KEY?.length || 0,
+    has_anthropic_setting: settings.some(s => s.key === 'anthropic_api_key'),
+    all_setting_keys: settings.map(s => s.key),
+    node_version: process.version,
+    cwd: process.cwd()
+  });
+});
+
 export default router;
