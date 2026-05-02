@@ -82,8 +82,7 @@ CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start
       const fenceStart = clean.indexOf('```');
       if (fenceStart !== -1) {
         clean = clean.substring(fenceStart);
-        clean = clean.replace(/^```[a-z]*
-?/, '');
+        clean = clean.replace(/^```[a-z]*/i, '').replace(/^\n/, '');
         const fenceEnd = clean.lastIndexOf('```');
         if (fenceEnd !== -1) clean = clean.substring(0, fenceEnd);
       }
