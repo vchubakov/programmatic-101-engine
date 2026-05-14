@@ -89,7 +89,9 @@ Return ONLY valid JSON:
   "skipped": [
     {"headline": "...", "reason": "why skipped"}
   ]
-}`;
+}
+
+CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start your response with { and end with }`;
 
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -101,7 +103,10 @@ Return ONLY valid JSON:
     let analysis;
     try {
       const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
-      analysis = JSON.parse(cleaned);
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      const jsonStr = start !== -1 && end !== -1 ? cleaned.slice(start, end + 1) : cleaned;
+      analysis = JSON.parse(jsonStr);
     } catch (err) {
       throw new Error('Researcher failed to return valid JSON: ' + raw.slice(0, 200));
     }

@@ -1,75 +1,50 @@
-import puppeteer from 'puppeteer-core';
+import https from 'https';
+
+function getJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ContentBot/1.0)',
+        'Accept': 'application/json',
+      }
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return getJson(res.headers.location).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+        res.resume();
+        return;
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        } catch {
+          reject(new Error('Non-JSON response from ' + url));
+        }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout fetching ' + url)); });
+  });
+}
 
 export async function scrapeMaddb() {
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
-      || '/run/current-system/sw/bin/chromium'
-      || '/usr/bin/chromium-browser'
-      || '/usr/bin/chromium',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--single-process'
-    ]
-  });
+  const data = await getJson('https://app.maddb.ai/api/trending');
 
-  try {
-    const page = await browser.newPage();
-    await page.setUserAgent(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) ' +
-      'Chrome/120.0.0.0 Safari/537.36'
-    );
+  const items = Array.isArray(data) ? data
+    : Array.isArray(data?.articles) ? data.articles
+    : Array.isArray(data?.stories) ? data.stories
+    : Array.isArray(data?.data) ? data.data
+    : [];
 
-    await page.goto('https://maddb.ai/trending', {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-
-    await page.waitForSelector(
-      'article, .article, .post, [class*="story"], [class*="news"]',
-      { timeout: 10000 }
-    ).catch(() => {});
-
-    const articles = await page.evaluate(() => {
-      const selectors = [
-        'article',
-        '.article-card',
-        '.story-card',
-        '[class*="article"]',
-        '[class*="story"]',
-        '[class*="trending"]'
-      ];
-
-      let elements = [];
-      for (const sel of selectors) {
-        elements = document.querySelectorAll(sel);
-        if (elements.length > 3) break;
-      }
-
-      return Array.from(elements).slice(0, 20).map(el => {
-        const headline = el.querySelector(
-          'h1, h2, h3, h4, [class*="title"], [class*="headline"]'
-        )?.innerText?.trim();
-
-        const summary = el.querySelector(
-          'p, [class*="summary"], [class*="description"], [class*="excerpt"]'
-        )?.innerText?.trim();
-
-        const link = el.querySelector('a')?.href;
-
-        const dateEl = el.querySelector('time, [class*="date"], [datetime]');
-        const date = dateEl?.getAttribute('datetime') || dateEl?.innerText?.trim();
-
-        return { headline, summary, url: link, date };
-      }).filter(a => a.headline && a.url);
-    });
-
-    return articles;
-  } finally {
-    await browser.close();
-  }
+  return items.slice(0, 20).map(item => ({
+    headline: item.headline || item.title || item.name || '',
+    summary: item.summary || item.description || item.excerpt || '',
+    url: item.url || item.link || item.href || '',
+    date: item.date || item.published_at || item.created_at || '',
+    ai_score: item.ai_score || item.score || 0,
+  })).filter(a => a.headline && a.url);
 }

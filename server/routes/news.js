@@ -11,6 +11,8 @@ const CACHE_HOURS = 6;
 
 // GET /api/news/fetch — scrape + filter via researcher
 router.get('/fetch', async (req, res) => {
+  console.log('[news/fetch] handler started');
+  try {
   const db = getDb();
   const apiKey = db.prepare(
     'SELECT value FROM settings WHERE key = ?'
@@ -74,6 +76,13 @@ router.get('/fetch', async (req, res) => {
       error: 'Research failed',
       detail: err.message,
       raw_articles: articles
+    });
+  }
+  } catch (fatalErr) {
+    console.error('[news/fetch] FATAL:', fatalErr.message, fatalErr.stack);
+    return res.status(500).json({
+      error: 'Fatal error',
+      detail: fatalErr.message
     });
   }
 });
