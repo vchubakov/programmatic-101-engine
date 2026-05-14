@@ -49,6 +49,10 @@ router.get('/linkedin/callback', async (req, res) => {
     return res.redirect(`/settings?error=${encodeURIComponent(error)}`);
   }
 
+  console.log('LinkedIn callback - client_id present:', !!process.env.LINKEDIN_CLIENT_ID);
+  console.log('LinkedIn callback - client_secret present:', !!process.env.LINKEDIN_CLIENT_SECRET);
+  console.log('LinkedIn callback - redirect_uri:', process.env.LINKEDIN_REDIRECT_URI);
+
   const db = getDb();
   const storedState    = db.prepare('SELECT value FROM settings WHERE key = ?').get('linkedin_oauth_state')?.value;
   const storedVerifier = db.prepare('SELECT value FROM settings WHERE key = ?').get('linkedin_oauth_code_verifier')?.value;
@@ -67,16 +71,28 @@ router.get('/linkedin/callback', async (req, res) => {
       code_verifier: storedVerifier || '',
     });
 
-    const tokenRes  = await fetch(LINKEDIN_TOKEN_URL, {
+    const tokenResponse = await fetch(LINKEDIN_TOKEN_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body:    tokenParams,
     });
-    const tokenData = await tokenRes.json();
 
-    if (!tokenRes.ok || tokenData.error) {
-      console.error('LinkedIn token exchange failed:', tokenData);
-      return res.redirect('/settings?error=token_exchange_failed');
+    const tokenResponseText = await tokenResponse.text();
+    console.log('LinkedIn token response status:', tokenResponse.status);
+    console.log('LinkedIn token response body:', tokenResponseText);
+
+    if (!tokenResponse.ok) {
+      console.error('LinkedIn token exchange failed:', tokenResponseText);
+      return res.redirect('/?error=token_exchange_failed&detail=' +
+        encodeURIComponent(tokenResponseText));
+    }
+
+    const tokenData = JSON.parse(tokenResponseText);
+
+    if (tokenData.error) {
+      console.error('LinkedIn token exchange failed:', tokenResponseText);
+      return res.redirect('/?error=token_exchange_failed&detail=' +
+        encodeURIComponent(tokenResponseText));
     }
 
     const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
