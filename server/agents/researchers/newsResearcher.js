@@ -1,4 +1,5 @@
 import { BaseAgent } from '../base.js';
+import { fetchMultipleArticles } from '../../scrapers/articleFetcher.js';
 
 export class NewsResearcher extends BaseAgent {
   constructor() { super('news_researcher'); }
@@ -25,6 +26,23 @@ export class NewsResearcher extends BaseAgent {
       recent_post_count: recentTopics.length
     });
 
+    const topArticles = articles
+      .sort((a, b) => (b.ai_score || 0) - (a.ai_score || 0))
+      .slice(0, 10);
+
+    const articleContents = await fetchMultipleArticles(topArticles.map(a => a.url));
+
+    const articlesWithContent = topArticles.map((article, i) => ({
+      ...article,
+      fullText: articleContents[i]?.text || ''
+    }));
+
+    steps.push({
+      step: 'articles_fetched',
+      fetched: articleContents.filter(a => a.success).length,
+      failed: articleContents.filter(a => !a.success).length
+    });
+
     const FILTER_PROMPT = `You are filtering news for Vlad Chubakov, a programmatic advertising strategist (@101Programmatic). His audience: media buyers, traders, adtech professionals.
 
 His content pillars: DSP deep-dives (TTD, DV360, Amazon DSP), optimization traps, measurement & attribution, supply quality, CTV, AI/agentic reality checks.
@@ -35,8 +53,14 @@ ${recentTopics.length > 0
   : 'None.'}
 
 TODAY'S CANDIDATE ARTICLES:
-${articles.map((a, i) =>
-  `[${i}] ${a.headline}\n    ${a.summary || 'No summary'}\n    ${a.url}`
+${articlesWithContent.map((a, i) =>
+  `[${i}] ${a.headline}
+  Summary: ${a.summary || 'No summary'}
+  Source: ${a.url}
+  Article text: ${a.fullText
+    ? a.fullText.slice(0, 800)
+    : 'Could not fetch'}
+  `
 ).join('\n\n')}
 
 YOUR JOB:
@@ -50,8 +74,7 @@ Prioritize:
 - Surprising data or contrarian angles
 - Measurement/AI news with practical implications
 
-CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start your response with { and end with }.
-
+Return ONLY valid JSON:
 {
   "selected": [
     {
@@ -66,7 +89,9 @@ CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start
   "skipped": [
     {"headline": "...", "reason": "why skipped"}
   ]
-}`;
+}
+
+CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start your response with { and end with }`;
 
     const msg = await client.messages.create({
       model: 'claude-sonnet-4-6',
@@ -77,30 +102,13 @@ CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start
     const raw = msg.content[0]?.text ?? '{}';
     let analysis;
     try {
-      // Remove any markdown code fences
-      let clean = raw;
-      const fenceStart = clean.indexOf('```');
-      if (fenceStart !== -1) {
-        clean = clean.substring(fenceStart);
-        clean = clean.replace(/^```[a-z]*/i, '').replace(/^\n/, '');
-        const fenceEnd = clean.lastIndexOf('```');
-        if (fenceEnd !== -1) clean = clean.substring(0, fenceEnd);
-      }
-      clean = clean.trim();
-      analysis = JSON.parse(clean);
+      const cleaned = raw.replace(/```json\n?|\n?```/g, '').trim();
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      const jsonStr = start !== -1 && end !== -1 ? cleaned.slice(start, end + 1) : cleaned;
+      analysis = JSON.parse(jsonStr);
     } catch (err) {
-      // Last resort: find first { and last }
-      try {
-        const start = raw.indexOf('{');
-        const end = raw.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-          analysis = JSON.parse(raw.substring(start, end + 1));
-        } else {
-          throw new Error('No JSON object found');
-        }
-      } catch (err2) {
-        throw new Error('Parse failed: ' + raw.slice(0, 200));
-      }
+      throw new Error('Researcher failed to return valid JSON: ' + raw.slice(0, 200));
     }
 
     steps.push({
@@ -110,7 +118,7 @@ CRITICAL: Return raw JSON only. No markdown. No code fences. No backticks. Start
     });
 
     const enriched = (analysis.selected || []).map(s => ({
-      ...articles[s.index],
+      ...articlesWithContent[s.index],
       reason: s.reason,
       suggested_angle: s.suggested_angle,
       is_duplicate_risk: s.is_duplicate_risk ?? false

@@ -1,51 +1,50 @@
 import https from 'https';
 
-const MADDB_API_URL = 'https://app.maddb.ai/rest/v1/news_cache?select=data&cache_key=eq.latest';
-const MADDB_API_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtubnVkeWl3YWNycGtiZXpyenphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA2MDUzODAsImV4cCI6MjA1NjE4MTM4MH0.r4hH5Da7W2i_pGfqXhfkX4KJqbSzM9Hym5Zan26pqis';
-
-function fetchJson(url, headers) {
+function getJson(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers }, (res) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ContentBot/1.0)',
+        'Accept': 'application/json',
+      }
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return getJson(res.headers.location).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+        res.resume();
+        return;
+      }
       const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
+      res.on('data', c => chunks.push(c));
       res.on('end', () => {
         try {
-          resolve(JSON.parse(Buffer.concat(chunks).toString()));
-        } catch (e) {
-          reject(new Error('Failed to parse JSON: ' + e.message));
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+        } catch {
+          reject(new Error('Non-JSON response from ' + url));
         }
       });
     });
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout fetching ' + url)); });
   });
 }
 
 export async function scrapeMaddb() {
-  const result = await fetchJson(MADDB_API_URL, {
-    'apikey': MADDB_API_KEY,
-    'Authorization': 'Bearer ' + MADDB_API_KEY,
-    'Accept': 'application/json',
-    'Accept-Profile': 'public',
-  });
+  const data = await getJson('https://app.maddb.ai/api/trending');
 
-  if (!Array.isArray(result) || !result[0]?.data) {
-    throw new Error('Unexpected response structure from maddb.ai API');
-  }
+  const items = Array.isArray(data) ? data
+    : Array.isArray(data?.articles) ? data.articles
+    : Array.isArray(data?.stories) ? data.stories
+    : Array.isArray(data?.data) ? data.data
+    : [];
 
-  const articles = result[0].data;
-
-  return articles
-    .filter(a => a.title && a.url)
-    .slice(0, 20)
-    .map(a => ({
-      headline: a.title,
-      summary: a.snippet || '',
-      url: a.url,
-      date: a.published_at 
-        ? a.published_at.split('T')[0] 
-        : new Date().toISOString().split('T')[0],
-      source: a.favicon || '',
-      ai_score: a.ai_score ?? 0
-    }));
+  return items.slice(0, 20).map(item => ({
+    headline: item.headline || item.title || item.name || '',
+    summary: item.summary || item.description || item.excerpt || '',
+    url: item.url || item.link || item.href || '',
+    date: item.date || item.published_at || item.created_at || '',
+    ai_score: item.ai_score || item.score || 0,
+  })).filter(a => a.headline && a.url);
 }

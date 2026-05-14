@@ -79,14 +79,25 @@ function ArticleCard({ article, onGenerate, generating, draft, onApprove, onReje
                 {article.summary}
               </p>
             )}
-            <a
-              href={article.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] text-blue-500 hover:text-blue-700 inline-block transition-colors"
-            >
-              {article.url}
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-500 hover:text-blue-700 inline-block transition-colors"
+              >
+                {article.url}
+              </a>
+              {article.url && (() => {
+                try {
+                  return (
+                    <span className="text-[11px] text-gray-400">
+                      via {new URL(article.url).hostname.replace('www.', '')}
+                    </span>
+                  );
+                } catch { return null; }
+              })()}
+            </div>
             {article.reason && (
               <p className="text-[12px] text-gray-500 italic mt-2 leading-relaxed">
                 <span className="not-italic font-semibold text-gray-600">Why this matters: </span>

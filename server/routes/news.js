@@ -11,7 +11,7 @@ const CACHE_HOURS = 6;
 
 // GET /api/news/fetch — scrape + filter via researcher
 router.get('/fetch', async (req, res) => {
-  console.log('[news/fetch] start', new Date().toISOString());
+  console.log('[news/fetch] handler started');
   try {
   const db = getDb();
   const apiKey = db.prepare(
@@ -78,17 +78,12 @@ router.get('/fetch', async (req, res) => {
       raw_articles: articles
     });
   }
-
-  } catch (err) {
-    console.error('[news/fetch] OUTER ERROR:', err.stack || err);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Outer handler failure',
-        message: err.message,
-        where: 'before or during db/scraper/researcher',
-        stack: (err.stack || '').split('\n').slice(0, 8)
-      });
-    }
+  } catch (fatalErr) {
+    console.error('[news/fetch] FATAL:', fatalErr.message, fatalErr.stack);
+    return res.status(500).json({
+      error: 'Fatal error',
+      detail: fatalErr.message
+    });
   }
 });
 
@@ -216,51 +211,6 @@ router.post('/generate-all', async (req, res) => {
   }
 
   res.status(201).json(drafts);
-});
-
-
-router.get('/debug-chrome', async (_req, res) => {
-  const { execSync } = await import('child_process');
-  try {
-    const result = execSync(
-      'find /nix /usr /snap /bin -name "chromium*" 2>/dev/null | head -20',
-      { encoding: 'utf8', timeout: 15000 }
-    );
-    res.json({ found: result.trim().split('\n').filter(Boolean) });
-  } catch (err) {
-    res.json({ error: err.message, found: [] });
-  }
-});
-
-
-router.get('/debug-db', (_req, res) => {
-  try {
-    const db = getDb();
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    const counts = {};
-    for (const t of tables) {
-      try {
-        counts[t.name] = db.prepare(`SELECT COUNT(*) as n FROM ${t.name}`).get().n;
-      } catch (e) { counts[t.name] = 'err: ' + e.message; }
-    }
-    res.json({ tables: tables.map(t => t.name), counts });
-  } catch (err) {
-    res.status(500).json({ error: err.message, stack: err.stack });
-  }
-});
-
-
-router.get('/debug-env', (_req, res) => {
-  const db = getDb();
-  const settings = db.prepare("SELECT key FROM settings").all();
-  res.json({
-    has_anthropic_env: !!process.env.ANTHROPIC_API_KEY,
-    anthropic_env_length: process.env.ANTHROPIC_API_KEY?.length || 0,
-    has_anthropic_setting: settings.some(s => s.key === 'anthropic_api_key'),
-    all_setting_keys: settings.map(s => s.key),
-    node_version: process.version,
-    cwd: process.cwd()
-  });
 });
 
 export default router;

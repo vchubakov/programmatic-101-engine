@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { runMigrations } from './migrations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, '../../data/content_engine.db');
+const DB_PATH = process.env.DB_PATH ?? path.join(__dirname, '../../data/content_engine.db');
 
 let db;
 
