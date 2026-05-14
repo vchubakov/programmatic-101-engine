@@ -143,6 +143,28 @@ export function runMigrations(db) {
     if (v) upsert.run(k, v);
   }
 
+  // LinkedIn OAuth tokens
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS linkedin_tokens (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      access_token     TEXT NOT NULL,
+      refresh_token    TEXT,
+      expires_at       TEXT NOT NULL,
+      linkedin_user_id TEXT,
+      linkedin_name    TEXT,
+      created_at       TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      updated_at       TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    )
+  `);
+
+  // Feedback + edit tracking columns on drafts
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN original_generated_text TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN edit_diff TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN feedback_rating TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN feedback_note TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN linkedin_post_id TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN posted_platform TEXT`); } catch { /* exists */ }
+
   // Seed education topics if table is empty
   const topicCount = db.prepare('SELECT COUNT(*) as n FROM topics').get().n;
   if (topicCount === 0) {

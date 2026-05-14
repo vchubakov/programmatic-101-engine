@@ -59,7 +59,7 @@ function AgentInfoPanel({ draftId, agentScope }) {
 
   if (!agentScope) return null;
 
-  const log = logs?.[0];
+  const log   = logs?.[0];
   const steps = log ? parseJSON(log.steps) : [];
 
   return (
@@ -126,6 +126,46 @@ function AgentInfoPanel({ draftId, agentScope }) {
   );
 }
 
+// ── FeedbackSection ───────────────────────────────────────────────────────────
+
+const RATINGS = [
+  { value: 'good',         label: 'Good draft',       cls: 'border-emerald-800 text-emerald-400 bg-emerald-950' },
+  { value: 'needed_work',  label: 'Needed work',      cls: 'border-amber-800   text-amber-400   bg-amber-950'   },
+  { value: 'missed_point', label: 'Missed the point', cls: 'border-rose-800    text-rose-400    bg-rose-950'    },
+];
+
+function FeedbackSection({ rating, onRating, note, onNote }) {
+  return (
+    <div className="pt-1 space-y-2">
+      <p className="text-[11px] text-gray-600 uppercase tracking-wider">How was this draft?</p>
+      <div className="flex gap-1.5 flex-wrap">
+        {RATINGS.map(r => (
+          <button
+            key={r.value}
+            onClick={() => onRating(rating === r.value ? null : r.value)}
+            className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ${
+              rating === r.value
+                ? r.cls
+                : 'border-gray-700 text-gray-600 hover:text-gray-400 hover:border-gray-600'
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        value={note}
+        onChange={e => onNote(e.target.value)}
+        placeholder="Add a note (optional) — e.g. hook was too generic, good angle but wrong structure"
+        className="w-full bg-gray-800 border border-gray-700 rounded text-xs text-gray-400
+                   px-3 py-2 focus:outline-none focus:border-gray-500 transition-colors
+                   placeholder-gray-700"
+      />
+    </div>
+  );
+}
+
 // ── badge styles ──────────────────────────────────────────────────────────────
 
 const MODULE_BADGE = {
@@ -150,6 +190,9 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
   const showLinkedin = draft.platform === 'linkedin' || draft.platform === 'both';
   const showX        = draft.platform === 'x'        || draft.platform === 'both';
 
+  // Capture original text once on mount
+  const originalTextRef = useRef(content.linkedin ?? '');
+
   const [liText, setLiText] = useState(content.linkedin ?? '');
 
   const rawX = content.x ?? content.tweets ?? content.options ?? [];
@@ -165,6 +208,10 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
   const [schedTime,  setSchedTime]  = useState('09:00');
   const [busy,       setBusy]       = useState(false);
   const pickerRef = useRef();
+
+  // Feedback state
+  const [feedbackRating, setFeedbackRating] = useState(null);
+  const [feedbackNote,   setFeedbackNote]   = useState('');
 
   useEffect(() => {
     const cfg = scheduleConfigs?.find(
@@ -199,7 +246,7 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
       editedText = xEdits[selectedX] ?? xOptions[selectedX] ?? '';
     }
     const scheduledAt = schedDate && schedTime ? `${schedDate}T${schedTime}:00` : null;
-    await onApprove(draft.id, editedText, scheduledAt);
+    await onApprove(draft.id, editedText, scheduledAt, feedbackRating, feedbackNote);
     setBusy(false);
     setShowPicker(false);
   }
@@ -220,7 +267,7 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
     setXEdits((prev) => { const n = [...prev]; n[i] = val; return n; });
   }
 
-  const sourceLabel = source.headline ?? source.topic ?? source.title ?? source.url ?? '—';
+  const sourceLabel   = source.headline ?? source.topic ?? source.title ?? source.url ?? '—';
   const moduleBadge   = MODULE_BADGE[draft.module]     ?? 'bg-gray-800 text-gray-400 border-gray-600';
   const platformBadge = PLATFORM_BADGE[draft.platform] ?? 'bg-gray-800 text-gray-400 border-gray-600';
 
@@ -339,6 +386,14 @@ export default function ReviewCard({ draft, onApprove, onReject, onRegenerate, s
             )}
           </div>
         )}
+
+        {/* ── feedback ── */}
+        <FeedbackSection
+          rating={feedbackRating}
+          onRating={setFeedbackRating}
+          note={feedbackNote}
+          onNote={setFeedbackNote}
+        />
 
         {/* ── action buttons ── */}
         <div className="flex items-center gap-2 pt-1 relative">

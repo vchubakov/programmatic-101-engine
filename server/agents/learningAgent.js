@@ -42,6 +42,26 @@ export class LearningAgent extends BaseAgent {
         };
       });
 
+      // Fetch edit pattern data
+      const editStats = db.prepare(`
+        SELECT
+          edit_diff,
+          feedback_rating,
+          feedback_note,
+          original_generated_text,
+          edited_text,
+          created_at
+        FROM drafts
+        WHERE agent_scope = ?
+          AND approved = 1
+          AND edit_diff IS NOT NULL
+          AND created_at > datetime('now', '-60 days')
+        ORDER BY created_at DESC
+        LIMIT 30
+      `).all(scope);
+
+      const editData = buildEditData(editStats);
+
       const LEARNING_PROMPT = `You are analyzing LinkedIn post performance for Vlad Chubakov (@101Programmatic), a programmatic advertising strategist.
 
 SCOPE: ${scope}
@@ -51,6 +71,9 @@ ${currentLearning?.running_notes || 'None yet.'}
 
 POST PERFORMANCE DATA (${posts.length} posts):
 ${JSON.stringify(postSummaries, null, 2)}
+
+EDIT PATTERN DATA (last 30 approved posts, this scope):
+${editData}
 
 YOUR TASKS:
 
@@ -67,6 +90,11 @@ YOUR TASKS:
    "LEARNED GUIDANCE (from N posts):
    - [specific actionable instruction]
    - [specific thing to avoid]"
+
+4. Analyze edit patterns:
+   - If edit_ratio consistently > 0.3: drafts need significant rework — what patterns show in the before/after examples?
+   - If feedback_notes mention specific issues repeatedly: address those directly in the prompt patch
+   - If 'missed_point' ratings are high: the angle selection or hook formula needs adjustment
 
 Return ONLY valid JSON:
 {
@@ -139,4 +167,39 @@ Return ONLY valid JSON:
 
     return results;
   }
+}
+
+function buildEditData(editStats) {
+  if (!editStats.length) return 'No edit data yet.';
+
+  const parsed = editStats.map(r => {
+    let diff = {};
+    try { diff = JSON.parse(r.edit_diff || '{}'); } catch { /* ignore */ }
+    return { ...r, diff };
+  });
+
+  const highEdit    = parsed.filter(r => r.diff.edit_ratio > 0.3);
+  const avgRatio    = parsed.reduce((s, r) => s + (r.diff.edit_ratio || 0), 0) / parsed.length;
+  const ratings     = { good: 0, needed_work: 0, missed_point: 0 };
+  const notes       = [];
+
+  for (const r of parsed) {
+    if (r.feedback_rating && ratings[r.feedback_rating] !== undefined) {
+      ratings[r.feedback_rating]++;
+    }
+    if (r.feedback_note) notes.push(r.feedback_note);
+  }
+
+  const examples = highEdit.slice(0, 3).map(r => ({
+    original_preview: (r.original_generated_text || '').slice(0, 100),
+    final_preview:    (r.edited_text || '').slice(0, 100),
+    edit_ratio:       r.diff.edit_ratio,
+  }));
+
+  return `- Posts with high edit ratio (>0.3): ${highEdit.length} out of ${parsed.length}
+- Average edit ratio: ${avgRatio.toFixed(3)}
+- Feedback ratings: good(${ratings.good}) / needed_work(${ratings.needed_work}) / missed_point(${ratings.missed_point})
+- Feedback notes: ${notes.length ? notes.map(n => `"${n}"`).join(', ') : 'none'}
+- Substantially rewritten examples:
+${examples.length ? JSON.stringify(examples, null, 2) : '  (none)'}`;
 }

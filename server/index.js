@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { initDb } from './db/index.js';
+import { initDb, getDb } from './db/index.js';
 import draftsRouter from './routes/drafts.js';
 import topicsRouter from './routes/topics.js';
 import scheduleRouter from './routes/schedule.js';
@@ -12,6 +12,8 @@ import educationRouter from './routes/education.js';
 import newsRouter from './routes/news.js';
 import personalRouter from './routes/personal.js';
 import agentsRouter from './routes/agents.js';
+import authRouter from './routes/auth.js';
+import { startScheduler } from './services/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +32,9 @@ app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 initDb();
+startScheduler(getDb());
 
+app.use('/auth', authRouter);
 app.use('/api/drafts', draftsRouter);
 app.use('/api/topics', topicsRouter);
 app.use('/api/schedule', scheduleRouter);

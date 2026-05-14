@@ -30,11 +30,16 @@ export default function ReviewQueue() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function onApprove(id, editedText, scheduledAt) {
+  async function onApprove(id, editedText, scheduledAt, feedbackRating, feedbackNote) {
     await fetch(`/api/drafts/${id}/approve`, {
       method:  'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ edited_text: editedText, scheduled_at: scheduledAt }),
+      body:    JSON.stringify({
+        edited_text:     editedText,
+        scheduled_at:    scheduledAt,
+        feedback_rating: feedbackRating || null,
+        feedback_note:   feedbackNote   || null,
+      }),
     });
     setDrafts((prev) => prev.filter((d) => d.id !== id));
   }
