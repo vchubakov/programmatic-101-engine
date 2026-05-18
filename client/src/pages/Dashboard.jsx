@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const MODULE_META = {
   news:      { label: 'News',      emoji: '📰', color: 'blue',   path: '/news' },
@@ -23,6 +23,7 @@ function fmt(iso) {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [counts, setCounts] = useState({ total: 0, counts: {} });
   const [upcoming, setUpcoming] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,9 +62,12 @@ export default function Dashboard() {
           </p>
         </div>
         {counts.total > 0 && (
-          <span className="inline-flex items-center gap-1.5 bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+          <button
+            onClick={() => navigate('/review')}
+            className="inline-flex items-center gap-1.5 bg-brand-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-brand-700 transition-colors"
+          >
             Review now
-          </span>
+          </button>
         )}
       </div>
 
