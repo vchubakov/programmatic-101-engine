@@ -62,6 +62,38 @@ export class LearningAgent extends BaseAgent {
 
       const editData = buildEditData(editStats);
 
+      // Fetch LinkedIn post stats (global — export doesn't know about scopes)
+      const postStats = db.prepare(`
+        SELECT lps.*, d.agent_scope, d.feedback_rating, d.feedback_note
+        FROM linkedin_post_stats lps
+        LEFT JOIN drafts d ON d.linkedin_post_url LIKE
+          '%' || substr(lps.post_url, instr(lps.post_url, '/posts/') + 7) || '%'
+        ORDER BY lps.engagement_rate DESC
+        LIMIT 20
+      `).all();
+
+      const liTop = postStats.slice(0, 3).map(p => ({
+        url: p.post_url,
+        impressions: p.impressions,
+        engagements: p.engagements,
+        engagement_rate: (p.engagement_rate * 100).toFixed(2) + '%',
+        feedback: p.feedback_note || null,
+      }));
+      const liBottom = [...postStats].sort((a, b) => a.engagement_rate - b.engagement_rate)
+        .slice(0, 3).map(p => ({
+          url: p.post_url,
+          impressions: p.impressions,
+          engagements: p.engagements,
+          engagement_rate: (p.engagement_rate * 100).toFixed(2) + '%',
+        }));
+      const liAvgRate = postStats.length
+        ? (postStats.reduce((s, p) => s + p.engagement_rate, 0) / postStats.length * 100).toFixed(2) + '%'
+        : 'no data';
+
+      const linkedinStatsBlock = postStats.length
+        ? `TOP 3 POSTS BY ENGAGEMENT RATE:\n${JSON.stringify(liTop, null, 2)}\n\nBOTTOM 3 POSTS:\n${JSON.stringify(liBottom, null, 2)}\n\nAverage engagement rate across ${postStats.length} tracked posts: ${liAvgRate}`
+        : 'No LinkedIn post stats imported yet.';
+
       const LEARNING_PROMPT = `You are analyzing LinkedIn post performance for Vlad Chubakov (@101Programmatic), a programmatic advertising strategist.
 
 SCOPE: ${scope}
@@ -71,6 +103,9 @@ ${currentLearning?.running_notes || 'None yet.'}
 
 POST PERFORMANCE DATA (${posts.length} posts):
 ${JSON.stringify(postSummaries, null, 2)}
+
+LINKEDIN POST STATS (from analytics export, global across all scopes):
+${linkedinStatsBlock}
 
 EDIT PATTERN DATA (last 30 approved posts, this scope):
 ${editData}

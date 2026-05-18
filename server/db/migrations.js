@@ -164,6 +164,39 @@ export function runMigrations(db) {
   try { db.exec(`ALTER TABLE drafts ADD COLUMN feedback_note TEXT`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE drafts ADD COLUMN linkedin_post_id TEXT`); } catch { /* exists */ }
   try { db.exec(`ALTER TABLE drafts ADD COLUMN posted_platform TEXT`); } catch { /* exists */ }
+  try { db.exec(`ALTER TABLE drafts ADD COLUMN linkedin_post_url TEXT`); } catch { /* exists */ }
+
+  // LinkedIn analytics tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS linkedin_analytics_imports (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      imported_at      TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      date_range       TEXT,
+      total_impressions INTEGER,
+      members_reached  INTEGER,
+      total_followers  INTEGER,
+      posts_imported   INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS linkedin_post_stats (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      post_url        TEXT NOT NULL UNIQUE,
+      publish_date    TEXT,
+      impressions     INTEGER DEFAULT 0,
+      engagements     INTEGER DEFAULT 0,
+      engagement_rate REAL DEFAULT 0,
+      imported_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+      draft_id        INTEGER REFERENCES drafts(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS linkedin_daily_stats (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      date            TEXT UNIQUE NOT NULL,
+      impressions     INTEGER DEFAULT 0,
+      engagements     INTEGER DEFAULT 0,
+      engagement_rate REAL DEFAULT 0
+    );
+  `);
 
   // Seed education topics if table is empty
   const topicCount = db.prepare('SELECT COUNT(*) as n FROM topics').get().n;

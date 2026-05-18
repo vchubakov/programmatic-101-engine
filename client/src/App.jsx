@@ -9,6 +9,7 @@ import Schedule from './pages/Schedule.jsx';
 import Settings from './pages/Settings.jsx';
 import ReviewQueue from './pages/ReviewQueue.jsx';
 import Learning from './pages/Learning.jsx';
+import Analytics from './pages/Analytics.jsx';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/personal" element={<Personal />} />
           <Route path="/memes" element={<Memes />} />
           <Route path="/learning" element={<Learning />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/review" element={<ReviewQueue />} />

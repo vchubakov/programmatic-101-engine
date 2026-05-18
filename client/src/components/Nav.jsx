@@ -7,7 +7,8 @@ const links = [
   { to: '/education', label: 'Education' },
   { to: '/personal',  label: 'Personal' },
   { to: '/memes',     label: 'Memes' },
-  { to: '/learning',  label: 'Learning' },
+  { to: '/learning',   label: 'Learning' },
+  { to: '/analytics', label: 'Analytics' },
   { to: '/schedule',  label: 'Schedule' },
   { to: '/settings',  label: 'Settings' },
 ];

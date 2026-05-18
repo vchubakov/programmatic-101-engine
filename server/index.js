@@ -13,6 +13,7 @@ import newsRouter from './routes/news.js';
 import personalRouter from './routes/personal.js';
 import agentsRouter from './routes/agents.js';
 import authRouter from './routes/auth.js';
+import analyticsRouter from './routes/analytics.js';
 import { startScheduler } from './services/scheduler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +44,7 @@ app.use('/api/education', educationRouter);
 app.use('/api/news', newsRouter);
 app.use('/api/personal', personalRouter);
 app.use('/api/agents', agentsRouter);
+app.use('/api/analytics', analyticsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
